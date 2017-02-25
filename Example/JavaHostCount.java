@@ -10,6 +10,7 @@ import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 
 import java.util.*;
@@ -28,15 +29,13 @@ public final class JavaHostCount {
       System.exit(1);
     }
 
-    // Create session context for executing the job
-    SparkSession spark = SparkSession
-      .builder()
-      .appName("JavaHostCount")
-      .getOrCreate();
+    // Create a new Spark Context
+    SparkConf conf = new SparkConf().setAppName("HostCount");
+    JavaSparkContext sc = new JavaSparkContext(conf);
 
     // Create a JavaRDD of strings; each string is a line read from
     // a text file.  
-    JavaRDD<String> lines = spark.read().textFile(args[0]).javaRDD();
+    JavaRDD<String> lines = sc.textFile(args[0]);
 
 
     // The flatMap operation applies the provided function to each
@@ -105,6 +104,6 @@ public final class JavaHostCount {
       System.out.println(tuple._1() + ": " + tuple._2());
     }
     
-    spark.stop();
+    sc.stop();
   }
 }
