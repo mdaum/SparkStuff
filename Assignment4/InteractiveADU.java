@@ -9,6 +9,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -43,10 +44,10 @@ public final class InteractiveADU {//test
 		// the strings returned from each invocation of the function.
 		// The strings are returned to flatMap as an iterator over a
 		// list of strings (string array to string list with iterator). 
-    JavaRDD<String> words = lines.flatMap(
-      new FlatMapFunction<String, String>() {
+    JavaPairRDD<String,ADUInfo> maps = lines.flatMapToPair(
+      new PairFlatMapFunction<String, String,ADUInfo>() {
         @Override
-        public Iterator<String> call(String s) {
+        public Iterator<Tuple2<String,ADUInfo>> call(String s) {
               String[] tokens = s.split(" ");
 			  if(!isClean(tokens)){
 					  System.out.println("broken line");return Collections.emptyIterator();
@@ -61,51 +62,45 @@ public final class InteractiveADU {//test
               IPaddr2 = tokens[4];
 
 	      String direction = tokens[3];
-	      
-
+		   long bytes = Long.parseLong(tokens[5]);
               // eliminate the port part
               last_dot = IPaddr1.lastIndexOf('.');
               IPaddr1 = IPaddr1.substring(0, last_dot);
               last_dot = IPaddr2.lastIndexOf('.');
               IPaddr2 = IPaddr2.substring(0, last_dot);
 
-              String[] Rec=new String[1];
-	      if(direction.equals(">"))Rec[0]=IPaddr2;
-	      else if(direction.equals("<"))Rec[0]=IPaddr1;
+              ArrayList<Tuple2<String,ADUInfo>> Rec=new ArrayList<Tuple2<String,ADUInfo>>();
+	      if(direction.equals(">")){
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr1,new ADUInfo(IPaddr1,bytes,0)));
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr2,new ADUInfo(IPaddr1,0,bytes)));
+			}
+	      else if(direction.equals("<")){
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr2,new ADUInfo(IPaddr1,bytes,0)));
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr1,new ADUInfo(IPaddr1,0,bytes)));
+		  }
               else{System.out.println("broken line");return Collections.emptyIterator();}
 
-              return Arrays.asList(Rec).iterator();
+              return Rec.iterator();
         }
       }
     );
 
-
-    //Create a PairRDD of <Key, Value> pairs from an RDD.  The input RDD
-    //contains strings and the output pairs are <String, Integer>. 
-    //The Tuple2 object is used to return the pair.  mapToPair applies
-    //the provided function to each element in the input RDD. 
-    JavaPairRDD<String, Integer> ones = words.mapToPair(
-      new PairFunction<String, String, Integer>() {
-        public Tuple2<String, Integer> call(String s) {
-	    return new Tuple2<>(s, 1); //key = IP, value = 1
-        }
-      });
 
     //Create a PairRDD where each element has one key from a PairRDD and
     //a value which results from invoking the supplied function on all the
     //values that have that same key.  In this case, the value returned 
     //from the jth invocation is given as an input parameter to the j+1
     //invocation so a cumulative value is produced.
-    JavaPairRDD<String, Integer> counts = ones.reduceByKey(
-      new Function2<Integer, Integer, Integer>() {
-        public Integer call(Integer i1, Integer i2) {
-          return i1 + i2;
+    JavaPairRDD<String, ADUInfo> counts = maps.reduceByKey(
+      new Function2<ADUInfo, ADUInfo, ADUInfo>() {//combine the ADUInfos....
+        public ADUInfo call(ADUInfo a1, ADUInfo a2) {
+          return new ADUInfo(a1.getIP(),a1.getSent()+a2.getSent(),a1.getRec()+a2.getRec());
         }
       });
 
  Scanner in =new Scanner(System.in);
 	 System.out.println("Collecting the results of the MapReduce...");
-	 List<Tuple2<String,Integer>> output = counts.collect();//if I put ADUInfo as other thing...I can now get compiler to tell me where to go from here
+	 List<Tuple2<String,ADUInfo>> output = counts.collect();//if I put ADUInfo as other thing...I can now get compiler to tell me where to go from here
 	while(true){ //loop after each query is finished...prompt for next command
 		System.out.println("=======MAIN MENU=======");
 		System.out.println("Select Op (type in number)");
@@ -120,7 +115,7 @@ public final class InteractiveADU {//test
 		switch(decision){
 			case 0: System.setOut(new PrintStream(new FileOutputStream("results"))); //print whole thing to file like in previous assignments
 					for(Tuple2<?,?> tuple: output){
-						System.out.println(tuple._1()+"\t"+tuple._2());
+						System.out.println(tuple._1()+"\t"+tuple._2());//toString representation should take care of this..
 					}
 					break;
 			case 1: break;
@@ -141,7 +136,7 @@ public final class InteractiveADU {//test
 		  if(tokens[4].split("\\.").length!=5)return false;
 		  if(!tokens[3].equals("<")&&!tokens[3].equals(">"))return false;
 		  try{
-			  Integer.parseInt(tokens[5]);
+			  Long.parseLong(tokens[5]);
 		  }
 		  catch(Exception e){
 			  return false;
