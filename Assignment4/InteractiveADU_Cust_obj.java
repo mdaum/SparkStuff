@@ -19,7 +19,7 @@ import java.io.*;
 //import java.net.*;
 import java.text.*;
 
-public final class InteractiveADU	 {//testing
+public final class InteractiveADU_Cust_obj	 {//test
 
   // The argument to the main function is the input file name
   // (specified as a parameter to the spark-submit command)
@@ -44,10 +44,10 @@ public final class InteractiveADU	 {//testing
 		// the strings returned from each invocation of the function.
 		// The strings are returned to flatMap as an iterator over a
 		// list of strings (string array to string list with iterator). 
-    JavaPairRDD<String,long[]> maps = lines.flatMapToPair(
-      new PairFlatMapFunction<String, String,long[]>() {
+    JavaPairRDD<String,ADUInfo> maps = lines.flatMapToPair(
+      new PairFlatMapFunction<String, String,ADUInfo>() {
         @Override
-        public Iterator<Tuple2<String,long[]>> call(String s) {
+        public Iterator<Tuple2<String,ADUInfo>> call(String s) {
               String[] tokens = s.split(" ");
 			  if(!isClean(tokens)){
 					  System.out.println("broken line");return Collections.emptyIterator();
@@ -69,14 +69,14 @@ public final class InteractiveADU	 {//testing
               last_dot = IPaddr2.lastIndexOf('.');
               IPaddr2 = IPaddr2.substring(0, last_dot);
 
-              ArrayList<Tuple2<String,long[]>> Rec=new ArrayList<Tuple2<String,long[]>>();
+              ArrayList<Tuple2<String,ADUInfo>> Rec=new ArrayList<Tuple2<String,ADUInfo>>();
 	      if(direction.equals(">")){
-				Rec.add(new Tuple2<String,long[]>(IPaddr1,new long[]{bytes,0}));//sent,rec
-				Rec.add(new Tuple2<String,long[]>(IPaddr2,new long[]{0,bytes}));
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr1,new ADUInfo(IPaddr1,bytes,0)));
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr2,new ADUInfo(IPaddr1,0,bytes)));
 			}
 	      else if(direction.equals("<")){
-				Rec.add(new Tuple2<String,long[]>(IPaddr2,new long[]{bytes,0}));
-				Rec.add(new Tuple2<String,long[]>(IPaddr1,new long[]{0,bytes}));
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr2,new ADUInfo(IPaddr1,bytes,0)));
+				Rec.add(new Tuple2<String,ADUInfo>(IPaddr1,new ADUInfo(IPaddr1,0,bytes)));
 		  }
               else{System.out.println("broken line");return Collections.emptyIterator();}
 
@@ -91,16 +91,16 @@ public final class InteractiveADU	 {//testing
     //values that have that same key.  In this case, the value returned 
     //from the jth invocation is given as an input parameter to the j+1
     //invocation so a cumulative value is produced.
-    JavaPairRDD<String, long[]> counts = maps.reduceByKey(
-      new Function2<long[], long[], long[]>() {//combine the long[]....
-        public long[] call(long[] a1, long[] a2) {
-          return new long[]{a1[0]+a2[0],a1[1]+a2[1]};
+    JavaPairRDD<String, ADUInfo> counts = maps.reduceByKey(
+      new Function2<ADUInfo, ADUInfo, ADUInfo>() {//combine the ADUInfos....
+        public ADUInfo call(ADUInfo a1, ADUInfo a2) {
+          return new ADUInfo(a1.getIP(),a1.getSent()+a2.getSent(),a1.getRec()+a2.getRec());
         }
       });
 
  Scanner in =new Scanner(System.in);
 	 System.out.println("Collecting the results of the MapReduce...");
-	 List<Tuple2<String,long[]>> output = counts.collect();
+	 List<Tuple2<String,ADUInfo>> output = counts.collect();//if I put ADUInfo as other thing...I can now get compiler to tell me where to go from here
 	while(true){ //loop after each query is finished...prompt for next command
 		System.out.println("=======MAIN MENU=======");
 		System.out.println("Select Op (type in number)");
@@ -112,34 +112,17 @@ public final class InteractiveADU	 {//testing
 		System.out.println("#5: The number of bytes sent and received by a given IP address.");
 		System.out.println("#6: exit.");
 		int decision = in.nextInt();
-		int N,K;
 		switch(decision){
-			case 0: System.out.println("Writing it all to file..."+"This thing has "+output.size()+" entries so be patient :)");
-					System.setOut(new PrintStream(new FileOutputStream("results"))); //print whole thing to file like in previous assignments
-					for(Tuple2<String,long[]> tuple: output){
-						System.out.println(tuple._1()+"\t"+tuple._2()[0]+"\t"+tuple._2()[1]);//toString representation should take care of this..
+			case 0: System.setOut(new PrintStream(new FileOutputStream("results"))); //print whole thing to file like in previous assignments
+					for(Tuple2<?,?> tuple: output){
+						System.out.println(tuple._1()+"\t"+tuple._2());//toString representation should take care of this..
 					}
 					break;
-			case 1: System.out.println("Please input your N <= 100");
-					N = in.nextInt();
-					if(N>100||N<1){System.out.println("Please enter a valid N...back to main menu.");break;}
-					break;
-			case 2: System.out.println("Please input your N <= 100");
-					N = in.nextInt();
-					if(N>100||N<1){System.out.println("Please enter a valid N...back to main menu.");break;}
-					break;
-			case 3: System.out.println("Please input your K >= 1GB in units of MB");
-					K = in.nextInt();
-					if(K<1000){System.out.println("Please enter a valid K...back to main menu.");break;}
-					break;
-			case 4: System.out.println("Please input your K >= 100MB in units of MB");
-					K = in.nextInt();
-					if(K<100){System.out.println("Please enter a valid K...back to main menu.");break;}
-					break;
-			case 5: System.out.println("Please enter an IP addr...");
-					String ip = in.next();
-					if(ip.split("\\.").length!=5){System.out.println("malformed ip...back to main menu.");break;}
-					break;
+			case 1: break;
+			case 2: break;
+			case 3: break;
+			case 4: break;
+			case 5: break;
 			case 6: sc.stop();System.out.println("Thanks for stopping by!"); System.exit(0);
 			default: System.out.println("Not a valid choice..."); break;
 		}
