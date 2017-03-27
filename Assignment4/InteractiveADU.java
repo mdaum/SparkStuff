@@ -13,6 +13,8 @@ import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.storage.StorageLevel;
+import org.apache.spark.api.java.function.*;
 
 import java.util.*;
 import java.io.*;
@@ -91,16 +93,38 @@ public final class InteractiveADU	 {//testing
     //values that have that same key.  In this case, the value returned 
     //from the jth invocation is given as an input parameter to the j+1
     //invocation so a cumulative value is produced.
-    JavaPairRDD<String, long[]> counts = maps.reduceByKey(
+    JavaPairRDD<String, long[]> counts = maps.reduceByKey( //counts is unsorted all ADUs (String, long[])where long [] has two elems send,rec
       new Function2<long[], long[], long[]>() {//combine the long[]....
         public long[] call(long[] a1, long[] a2) {
           return new long[]{a1[0]+a2[0],a1[1]+a2[1]};
         }
       });
-
+	  
+	JavaPairRDD<Long,String> send_unsorted=counts.mapToPair(
+		new PairFunction<Tuple2<String,long[]>,Long,String>(){
+			public Tuple2<Long,String> call(Tuple2<String,long[]> foo)throws Exception{
+				return new Tuple2<Long,String>(foo._2()[0],foo._1());
+		 }
+	 });
+	 JavaPairRDD<Long,String> send_sorted=send_unsorted.sortByKey(false);//this is sent descended sorted (bytes,ip)
+	 
+	 JavaPairRDD<Long,String> rec_unsorted=counts.mapToPair(
+		new PairFunction<Tuple2<String,long[]>,Long,String>(){
+			public Tuple2<Long,String> call(Tuple2<String,long[]> foo)throws Exception{
+				return new Tuple2<Long,String>(foo._2()[1],foo._1());
+		 }
+	 });
+	 JavaPairRDD<Long,String> rec_sorted=rec_unsorted.sortByKey(false);//this is rec descended sorted (bytes,ip)
+	 
+	 
+	
  Scanner in =new Scanner(System.in);
+ 	 counts.persist(StorageLevel.MEMORY_ONLY());//keep it stored...
+	 send_sorted.persist(StorageLevel.MEMORY_ONLY());//keep it stored...
+	 rec_sorted.persist(StorageLevel.MEMORY_ONLY());//keep it stored...
 	 System.out.println("Collecting the results of the MapReduce...");
-	 List<Tuple2<String,long[]>> output = counts.collect();
+
+
 	while(true){ //loop after each query is finished...prompt for next command
 		System.out.println("=======MAIN MENU=======");
 		System.out.println("Select Op (type in number)");
@@ -114,33 +138,73 @@ public final class InteractiveADU	 {//testing
 		int decision = in.nextInt();
 		int N,K;
 		switch(decision){
-			case 0: System.out.println("Writing it all to file..."+"This thing has "+output.size()+" entries so be patient :)");
+			case 0: List<Tuple2<String,long[]>> output_0 = counts.collect();
+					System.out.println("Writing it all to file..."+"This thing has "+output_0.size()+" entries so be patient :)");
 					System.setOut(new PrintStream(new FileOutputStream("results"))); //print whole thing to file like in previous assignments
-					for(Tuple2<String,long[]> tuple: output){
+					for(Tuple2<String,long[]> tuple: output_0){
 						System.out.println(tuple._1()+"\t"+tuple._2()[0]+"\t"+tuple._2()[1]);//toString representation should take care of this..
 					}
 					break;
 			case 1: System.out.println("Please input your N <= 100");
 					N = in.nextInt();
 					if(N>100||N<1){System.out.println("Please enter a valid N...back to main menu.");break;}
+					List<Tuple2<Long,String>> L_1=send_sorted.take(N);
+					for (Tuple2<Long,String> tuple:L_1){
+						System.out.println(tuple._2()+"\t"+tuple._1());
+					}
 					break;
 			case 2: System.out.println("Please input your N <= 100");
 					N = in.nextInt();
 					if(N>100||N<1){System.out.println("Please enter a valid N...back to main menu.");break;}
+					List<Tuple2<Long,String>> L_2=rec_sorted.take(N);
+					for (Tuple2<Long,String> tuple:L_2){
+						System.out.println(tuple._2()+"\t"+tuple._1());
+					}
 					break;
 			case 3: System.out.println("Please input your K >= 1GB in units of MB");
 					K = in.nextInt();
+					final int num_3 = K;
 					if(K<1000){System.out.println("Please enter a valid K...back to main menu.");break;}
+					JavaPairRDD<Long,String> top_3=send_sorted.filter(
+						new Function<Tuple2<Long,String>,Boolean>(){
+							public Boolean call(Tuple2<Long,String> foo){
+								if(foo._1()/1000>=num_3)return true;
+								return false;
+							}
+					});
+					List<Tuple2<Long,String>> L_3 = top_3.collect();
+					for(Tuple2<Long,String>tuple:L_3){
+						System.out.println(tuple._2()+"\t"+tuple._1());
+					}
 					break;
 			case 4: System.out.println("Please input your K >= 100MB in units of MB");
 					K = in.nextInt();
+					final int num_4=K;
 					if(K<100){System.out.println("Please enter a valid K...back to main menu.");break;}
+					JavaPairRDD<Long,String> top_4=rec_sorted.filter(
+						new Function<Tuple2<Long,String>,Boolean>(){
+							public Boolean call(Tuple2<Long,String> foo){
+								if(foo._1()/1000>=num_4)return true;
+								return false;
+							}
+					});
+					List<Tuple2<Long,String>> L_4 = top_4.collect();
+					for(Tuple2<Long,String>tuple:L_4){
+						System.out.println(tuple._2()+"\t"+tuple._1());
+					}
 					break;
 			case 5: System.out.println("Please enter an IP addr...");
 					String ip = in.next();
-					if(ip.split("\\.").length!=5){System.out.println("malformed ip...back to main menu.");break;}
+					if(ip.split("\\.").length!=4){System.out.println("malformed ip (omit the port)...back to main menu.");break;}
+					List<long[]> vals_5=counts.lookup(ip);
+					if(vals_5.size()==0)System.out.println("IP not found...back to main menu.");
+					else if(vals_5.size()>1)System.out.println("WHAT?");
+					else{
+						long[] it=vals_5.get(0);
+						System.out.println(ip+"\t"+it[0]+"\t"+it[1]);
+					}
 					break;
-			case 6: sc.stop();System.out.println("Thanks for stopping by!"); System.exit(0);
+			case 6: sc.stop();System.out.println("Thanks for stopping by!"); System.exit(0);//test
 			default: System.out.println("Not a valid choice..."); break;
 		}
 		
