@@ -168,7 +168,7 @@ public final class InteractiveADU	 {//testing
 					JavaPairRDD<Long,String> top_3=send_sorted.filter(
 						new Function<Tuple2<Long,String>,Boolean>(){
 							public Boolean call(Tuple2<Long,String> foo){
-								if(foo._1()/1000>=num_3)return true;
+								if(foo._1()/1000000>=num_3)return true;
 								return false;
 							}
 					});
@@ -184,7 +184,7 @@ public final class InteractiveADU	 {//testing
 					JavaPairRDD<Long,String> top_4=rec_sorted.filter(
 						new Function<Tuple2<Long,String>,Boolean>(){
 							public Boolean call(Tuple2<Long,String> foo){
-								if(foo._1()/1000>=num_4)return true;
+								if(foo._1()/1000000>=num_4)return true;
 								return false;
 							}
 					});
